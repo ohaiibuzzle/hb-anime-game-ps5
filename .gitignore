@@ -1,0 +1,9 @@
+# HoYoverse's installer: not ours to redistribute
+HoyoPlay.exe
+sophon-dl/sophon-dl.exe
+sophon-dl/selftest
+sophon-dl/selftest.dSYM/
+sophon-dl/deps/
+sophon-dl/live/
+
+.DS_Store

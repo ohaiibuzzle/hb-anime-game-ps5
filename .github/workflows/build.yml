@@ -1,0 +1,162 @@
+# Builds the PS5 app from upstream prospero-win with this repo's Spritz patches.
+#
+# Upstream's app needs the PS5 payload SDK and hours of builds, so it is not
+# rebuilt here. Our patches (wine-patches/) only change two PE modules,
+# ws2_32.dll and crypt32.dll, so this job takes upstream's published release
+# zip, builds those two modules from the exact prospero-win commit that release
+# names in its SOURCES.txt (same Wine pin, same series, plus ours), and swaps
+# them in. It also builds sophon-dl.exe and bundles the recipes and profiles.
+#
+# Run it from the Actions tab (optionally naming an upstream release tag), or
+# push a v* tag to publish both zips as a release of this repo.
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      prospero_release:
+        description: "Upstream prospero-win release tag (e.g. v0.2.0), or latest"
+        default: latest
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM: mpereiraesaa/prospero-win
+
+jobs:
+  files:
+    name: sophon-dl and launcher files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - run: make -C sophon-dl sophon-dl.exe
+      - name: Bundle
+        run: |
+          mkdir -p out/spritz-ps5
+          cp -r sophon-dl/sophon-dl.exe profiles recipes push-game-profile.sh README.md out/spritz-ps5/
+          (cd out && zip -qr spritz-ps5.zip spritz-ps5)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spritz-ps5
+          path: out/spritz-ps5.zip
+
+  app:
+    name: prospero-win app with Spritz patches
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: spritz
+
+      - name: Download the upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANT: ${{ inputs.prospero_release || 'latest' }}
+        run: |
+          if [ "$WANT" = latest ]; then
+            tag=$(gh release view -R "$UPSTREAM" --json tagName --jq .tagName)
+          else
+            tag=$WANT
+          fi
+          mkdir rel && cd rel
+          gh release download "$tag" -R "$UPSTREAM"
+          sha256sum -c SHA256SUMS
+          zip=$(ls prospero-win-*.zip)
+          unzip -q "$zip"
+          # The prospero-win commit the release was built from.
+          commit=$(sed -n 's/^prospero-win .* commit \([0-9a-f]\{40\}\).*/\1/p' PPSA99995/SOURCES.txt)
+          [ -n "$commit" ] || { echo "no prospero-win commit in SOURCES.txt"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "upstream $tag, prospero-win $commit"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM }}
+          ref: ${{ steps.upstream.outputs.commit }}
+          path: prospero-win
+
+      - name: Add the Spritz patches to the series
+        run: |
+          cp spritz/wine-patches/*.patch prospero-win/wine/patches/
+          sh prospero-win/tools/build_wine_ps5.sh --check-patches
+
+      - name: Fetch the pinned Wine revision
+        run: |
+          commit=$(sed -n 's/^WINE_COMMIT=//p' prospero-win/tools/build_wine_ps5.sh)
+          git init -q wine
+          git -C wine fetch -q --depth 1 https://github.com/wine-mirror/wine.git "$commit"
+          # build_host_wine.sh clones this with --shared, which only copies named refs.
+          git -C wine update-ref refs/heads/pinned "$commit"
+
+      # Configure stops without X11 or FreeType; the rest is what the PC build would use.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64 bison flex libx11-dev libxext-dev \
+            libfreetype-dev libfontconfig-dev libgnutls28-dev libvulkan-dev
+
+      # Upstream's own PC build: the whole series (ours included) on the pinned Wine.
+      - name: Build Wine with the series
+        run: sh prospero-win/tools/build_host_wine.sh --source "$PWD/wine" --work "$PWD/host"
+
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-build-logs
+          path: host/*.log
+
+      - name: Swap the patched modules into the app
+        run: |
+          src=host/install/usr/lib/wine
+          dst=rel/PPSA99995/win/wine/lib/wine
+          for arch in i386-windows x86_64-windows; do
+            for dll in ws2_32.dll crypt32.dll; do
+              [ -f "$dst/$arch/$dll" ] || { echo "release has no $arch/$dll"; exit 1; }
+              cp "$src/$arch/$dll" "$dst/$arch/$dll"
+            done
+            # The switches only exist in the patched modules.
+            grep -q PW_ENABLE_DISCONNECT "$dst/$arch/ws2_32.dll"
+            grep -q PW_ENABLE_TIMEOUT_FIX "$dst/$arch/ws2_32.dll"
+          done
+          {
+            echo
+            echo "Spritz-PS5  ${{ github.server_url }}/${{ github.repository }}  commit ${{ github.sha }}"
+            echo "  ws2_32.dll and crypt32.dll rebuilt with its wine-patches added to the series:"
+            for p in spritz/wine-patches/*.patch; do echo "    ${p##*/}"; done
+          } >> rel/PPSA99995/SOURCES.txt
+          mkdir out
+          name=prospero-win-${{ steps.upstream.outputs.tag }}-spritz.zip
+          (cd rel && zip -qr "../out/$name" PPSA99995)
+          (cd out && sha256sum "$name" > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prospero-win-spritz
+          path: out/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [files, app]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --generate-notes \
+            out/*.zip out/SHA256SUMS

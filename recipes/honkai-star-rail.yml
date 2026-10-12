@@ -1,0 +1,37 @@
+# Honkai: Star Rail for Prospero Win, downloaded on the console itself.
+#
+# This recipe only builds the prefix on your PC (a few hundred MB): DXVK for
+# the game's Direct3D 11, corefonts (real Arial, which the launcherless game
+# and HoYoverse's own tools expect), and sophon-dl.exe, our downloader that
+# speaks HoYoPlay's "Sophon" chunk protocol. The 115 GB game is then fetched
+# on the PS5 by the "Download / Update" entry, straight into
+# C:\Games\StarRail of this prefix.
+#
+# HoYoPlay itself is not used: it is a Chromium (CEF) app that needs child
+# processes, and starts the game as one, and Wine on the console runs a
+# single process.
+#
+# pw_install.py writes a profile that starts sophon-dl.exe; replace it with
+# profiles/honkai-star-rail.profile from this repo before pushing (see README).
+name: "Honkai: Star Rail"
+game_slug: honkai-star-rail
+version: Sophon download on the console (Prospero Win)
+slug: honkai-star-rail-sophon-prospero-win
+runner: wine
+prospero:
+  name: "Honkai: Star Rail - Download / Update"
+  graphics: dxvk
+  display: {desktop: 1920x1080}
+script:
+  game:
+    exe: drive_c/Games/sophon-dl/sophon-dl.exe
+    prefix: $GAMEDIR
+    args: hkrpg_global C:\Games\StarRail game en-us
+  files:
+  - sophon: "N/A:Select sophon-dl.exe (built in sophon-dl/ with make)"
+  wine:
+    dxvk: true
+  installer:
+  - task: {name: create_prefix, prefix: $GAMEDIR}
+  - task: {name: winetricks, prefix: $GAMEDIR, app: corefonts}
+  - copy: {src: sophon, dst: $GAMEDIR/drive_c/Games/sophon-dl}

@@ -136,7 +136,25 @@ jobs:
           mkdir out
           name=prospero-win-${{ steps.upstream.outputs.tag }}-spritz.zip
           (cd rel && zip -qr "../out/$name" PPSA99995)
-          (cd out && sha256sum "$name" > SHA256SUMS)
+
+      # The library pw_prefix.py pushes: each game's prefix and its Download /
+      # Update profile, made by upstream's installer with the Wine built above.
+      - name: Build the game prefixes
+        run: |
+          sudo apt-get install -y xvfb
+          python3 -m pip install --user pyyaml==6.0.1
+          make -C spritz/sophon-dl sophon-dl.exe
+          wine=$PWD/host/install/usr/bin/wine
+          for recipe in spritz/recipes/*.yml; do
+            xvfb-run -a python3 prospero-win/tools/pw_install.py "$recipe" --library "$PWD/library" \
+              --wine "$wine" --file sophon="$PWD/spritz/sophon-dl/sophon-dl.exe"
+          done
+          # Ours replace the generated profiles: the downloader needs gdi, and
+          # the game entries ride along for push-game-profile.sh.
+          cp spritz/profiles/*.profile library/profiles/
+          # One archive: a prefix links z: to /, which upload-artifact would follow.
+          tar -czf out/prospero-library-spritz.tar.gz -C library prefixes profiles
+          (cd out && sha256sum -- *.zip *.tar.gz > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4
         with:
@@ -159,4 +177,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --generate-notes \
-            out/*.zip out/SHA256SUMS
+            out/*.zip out/*.tar.gz out/SHA256SUMS

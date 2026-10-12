@@ -50,49 +50,33 @@ Each one is checked with `git apply` against prospero-win's pinned Wine
 | 0002 block the first connection (Star Rail) | `0922` | Ported. On by itself for `StarRail.exe`, and forced on for Genshin and ZZZ by `PW_ENABLE_DISCONNECT=1` in their game entries (Spritz does not do that for them); the switches are renamed `PW_ENABLE_DISCONNECT`/`PW_DISABLE_DISCONNECT`. Its second hunk is moved onto upstream Wine's `connect()`, which lacks Proton's lines it was anchored to |
 | 0003–0005 steam.exe stub (Genshin, ZZZ, Honkai Impact 3rd) | — | The stub starts the game as a second process, which the PS5 cannot do |
 | 0006, 0008 winex11 | — | The PS5 has its own display driver, not X11 |
-| 0007 copy arial.ttf | — | Upstream Wine has no `arial.ttf`. The recipes install corefonts instead |
+| 0007 copy arial.ttf | — | Upstream Wine has no `arial.ttf`. The recipes add Liberation Sans as `Arial` instead, which is what that file is |
 | 0001 winediag text | — | Cosmetic |
 
 ## Setup
 
-You need the prospero-win setup from its
+**[RUNNING.md](RUNNING.md)** walks through it: GitHub Actions builds the
+patched app and all three games' prefixes, and you push them to the console.
+You don't need a Linux PC or your own Wine build.
+
+The CI can rebuild so little because the patches only change two PE modules
+(`ws2_32.dll`, `crypt32.dll`). `.github/workflows/build.yml` takes upstream's
+release zip, rebuilds those two from the prospero-win commit the release
+names in `SOURCES.txt` with our patches added to the series, and swaps them
+in. It then runs upstream's `pw_install.py` on `recipes/`. To do it by hand
+instead, follow upstream's
 [installing games](https://github.com/mpereiraesaa/prospero-win/blob/main/docs/INSTALLING_GAMES.md)
-guide: an x86_64 Linux PC with the pinned host Wine, and the console with
-FTP and the app.
+guide with `wine-patches/*.patch` added to its `wine/patches/`, and replace
+each generated `<slug>.profile` with this repo's before pushing (the
+downloader needs `graphics = gdi`).
 
-1. **Get the patched app from CI.** The patches only change two PE modules
-   (`ws2_32.dll`, `crypt32.dll`), so `.github/workflows/build.yml` takes
-   upstream's latest release zip, rebuilds those two from the prospero-win
-   commit the release names in `SOURCES.txt` with our patches added to the
-   series, and swaps them in (about an hour on GitHub's runners). Run
-   **Build** from the Actions tab (it can take an upstream tag), or push a
-   `v*` tag to publish the result as a release. Install
-   `prospero-win-<tag>-spritz.zip` like an upstream release. Doing it by
-   hand: copy `wine-patches/*.patch` into prospero-win's `wine/patches/`
-   and follow its development guide.
-2. **Build the downloader:** `make -C sophon-dl` (needs `x86_64-w64-mingw32-gcc`).
-   `make -C sophon-dl check` runs the self-test against live HoYoverse data
-   for all three games (macOS, because it uses CommonCrypto for MD5).
-3. **Build a game's prefix** on the PC, with `<slug>` from the table above:
-   ```sh
-   python3 tools/pw_install.py <this repo>/recipes/<slug>.yml \
-       --library ~/prospero-library --wine <host wine> \
-       --file sophon=<this repo>/sophon-dl/sophon-dl.exe
-   cp <this repo>/profiles/<slug>.profile ~/prospero-library/profiles/
-   python3 tools/pw_prefix.py push <slug> --library ~/prospero-library --host <PS5 IP>
-   ```
-   The `cp` replaces the generated profile with the GDI one the downloader
-   needs.
-4. **Download** on the console: start **&lt;Game&gt; - Download / Update**.
-   Check the free space against the table above. Leave it running. If it
-   stops, start it again and it resumes from the chunks already on disk.
-5. **Add the game entry:** `./push-game-profile.sh <slug> <PS5 IP>`, then
-   start the game.
+The recipes put Liberation Sans in the prefix and map `Arial` to it, as
+Spritz-Wine's `arial.ttf` does (Proton builds that from Liberation Sans).
+It is OFL-licensed, so the prefixes can be shared, unlike winetricks'
+corefonts.
 
-Updates: run the Download / Update entry again. If the installed version
-is older, it hashes every file and fetches only the chunks that changed.
-Other voice packs: edit `arguments` in `<slug>.profile`
-(`game en-us ja-jp …`).
+Other voice packs: edit `arguments` in `profiles/<slug>.profile`
+(`game en-us ja-jp …`) before pushing.
 
 ZZZ also offers 109 numbered optional content packs (19.5 GB in 3.2.0).
 [Collapse Launcher](https://github.com/CollapseLauncher/Collapse) downloads

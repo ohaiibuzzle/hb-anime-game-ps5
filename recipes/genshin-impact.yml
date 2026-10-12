@@ -1,8 +1,9 @@
 # Genshin Impact for Prospero Win, downloaded on the console itself.
 #
 # This recipe only builds the prefix on your PC (a few hundred MB): DXVK for
-# the game's Direct3D 11, corefonts (real Arial, which the launcherless game
-# and HoYoverse's own tools expect), and sophon-dl.exe, our downloader that
+# the game's Direct3D 11, Liberation Sans standing in for Arial (what
+# Spritz-Wine's arial.ttf is: Proton builds it from Liberation Sans; OFL, so
+# the prefix may be shared), and sophon-dl.exe, our downloader that
 # speaks HoYoPlay's "Sophon" chunk protocol. The 130+ GB game is then fetched
 # on the PS5 by the "Download / Update" entry, straight into
 # C:\Games\GenshinImpact of this prefix.
@@ -29,9 +30,24 @@ script:
     args: hk4e_global C:\Games\GenshinImpact game en-us
   files:
   - sophon: "N/A:Select sophon-dl.exe (built in sophon-dl/ with make)"
+  - liberation:
+      url: https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz
+      filename: liberation-fonts-ttf-2.1.5.tar.gz
+      sha256: 7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0
   wine:
     dxvk: true
   installer:
   - task: {name: create_prefix, prefix: $GAMEDIR}
-  - task: {name: winetricks, prefix: $GAMEDIR, app: corefonts}
+  - extract: {file: liberation, dst: $CACHE/liberation}
+  - copy: {src: $CACHE/liberation/liberation-fonts-ttf-2.1.5/LiberationSans-Regular.ttf, dst: $GAMEDIR/drive_c/windows/Fonts}
+  - copy: {src: $CACHE/liberation/liberation-fonts-ttf-2.1.5/LiberationSans-Bold.ttf, dst: $GAMEDIR/drive_c/windows/Fonts}
+  - copy: {src: $CACHE/liberation/liberation-fonts-ttf-2.1.5/LiberationSans-Italic.ttf, dst: $GAMEDIR/drive_c/windows/Fonts}
+  - copy: {src: $CACHE/liberation/liberation-fonts-ttf-2.1.5/LiberationSans-BoldItalic.ttf, dst: $GAMEDIR/drive_c/windows/Fonts}
+  - copy: {src: $CACHE/liberation/liberation-fonts-ttf-2.1.5/LICENSE, dst: $GAMEDIR/drive_c/Games/LICENSES/liberation-fonts}
+  - task:
+      name: set_regedit
+      prefix: $GAMEDIR
+      path: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes
+      key: Arial
+      value: Liberation Sans
   - copy: {src: sophon, dst: $GAMEDIR/drive_c/Games/sophon-dl}

@@ -1,9 +1,9 @@
 # Builds the PS5 app from upstream prospero-win with this repo's Spritz patches.
 #
 # Upstream's app needs the PS5 payload SDK and hours of builds, so it is not
-# rebuilt here. Our patches (wine-patches/) only change two PE modules,
-# ws2_32.dll and crypt32.dll, so this job takes upstream's published release
-# zip, builds those two modules from the exact prospero-win commit that release
+# rebuilt here. Our patches (wine-patches/) only change three PE modules,
+# ws2_32.dll, crypt32.dll and kernelbase.dll, so this job takes upstream's
+# published release zip, builds those modules from the exact prospero-win commit that release
 # names in its SOURCES.txt (same Wine pin, same series, plus ours), and swaps
 # them in. It also builds sophon-dl.exe and bundles the recipes and profiles.
 #
@@ -105,7 +105,7 @@ jobs:
 
       # Upstream's own PC build: the whole series (ours included) on the pinned Wine.
       - name: Build Wine with the series
-        run: sh prospero-win/tools/build_host_wine.sh --source "$PWD/wine" --work "$PWD/host"
+        run: sh prospero-win/tools/build_host_wine.sh --source "$PWD/wine" --work "$PWD/host" --jobs 4
 
       - name: Upload build logs
         if: failure()
@@ -119,18 +119,19 @@ jobs:
           src=host/install/usr/lib/wine
           dst=rel/PPSA99995/win/wine/lib/wine
           for arch in i386-windows x86_64-windows; do
-            for dll in ws2_32.dll crypt32.dll; do
+            for dll in ws2_32.dll crypt32.dll kernelbase.dll; do
               [ -f "$dst/$arch/$dll" ] || { echo "release has no $arch/$dll"; exit 1; }
               cp "$src/$arch/$dll" "$dst/$arch/$dll"
             done
             # The switches only exist in the patched modules.
             grep -q PW_ENABLE_DISCONNECT "$dst/$arch/ws2_32.dll"
             grep -q PW_ENABLE_TIMEOUT_FIX "$dst/$arch/ws2_32.dll"
+            grep -q "GI detected" "$dst/$arch/kernelbase.dll"
           done
           {
             echo
             echo "Spritz-PS5  ${{ github.server_url }}/${{ github.repository }}  commit ${{ github.sha }}"
-            echo "  ws2_32.dll and crypt32.dll rebuilt with its wine-patches added to the series:"
+            echo "  ws2_32.dll, crypt32.dll and kernelbase.dll rebuilt with its wine-patches added to the series:"
             for p in spritz/wine-patches/*.patch; do echo "    ${p##*/}"; done
           } >> rel/PPSA99995/SOURCES.txt
           mkdir out
@@ -149,6 +150,8 @@ jobs:
             xvfb-run -a python3 prospero-win/tools/pw_install.py "$recipe" --library "$PWD/library" \
               --wine "$wine" --file sophon="$PWD/spritz/sophon-dl/sophon-dl.exe"
           done
+          # wineboot copies 0924's steam.exe from the lib dir; 0923 names it as the parent.
+          for prefix in library/prefixes/*; do test -s "$prefix/drive_c/windows/system32/steam.exe"; done
           # Ours replace the generated profiles: the downloader needs gdi, and
           # the game entries ride along for push-game-profile.sh.
           cp spritz/profiles/*.profile library/profiles/

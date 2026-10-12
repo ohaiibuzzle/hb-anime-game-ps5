@@ -1,0 +1,81 @@
+From 8e33e80e226d39b2b8a6e33876b2b2a9a321251c Mon Sep 17 00:00:00 2001
+From: NelloKudo <marshnelloosu@gmail.com>
+Date: Wed, 6 Aug 2025 20:43:03 +0200
+Subject: [PATCH] HACK: kernelbase: Report 'steam.exe' as parent process when
+ needed
+
+GI since 5.8 needs to be launched through steam.exe for it to launch without issues.
+Proton's 'steam.exe' is just a stub in the first place, so returning the right value
+when needed won't change the intended behavior.
+
+prospero-win: from NelloKudo, replaces Spritz-Wine's steam.exe stub
+(0001-spritz/0003-0005), which needs a second process. Also matches
+StarRail.exe and ZenlessZoneZero.exe, the other games on this port.
+---
+ dlls/kernelbase/debug.c | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/dlls/kernelbase/debug.c b/dlls/kernelbase/debug.c
+index 8dbb677..2ee47a5 100644
+--- a/dlls/kernelbase/debug.c
++++ b/dlls/kernelbase/debug.c
+@@ -1442,6 +1442,26 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetModuleBaseNameW( HANDLE process, HMODULE modul
+     return size;
+ }
+ 
++// HACK: Detect if GI is running
++static BOOL is_gi(void)
++{
++    static volatile char cache = -1;
++    BOOL ret = cache;
++    if (ret == -1)
++    {
++        const WCHAR *p, *name = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer;
++        if ((p = wcsrchr(name, '/')))
++            name = p + 1;
++        if ((p = wcsrchr(name, '\\')))
++            name = p + 1;
++        ret = (!wcsicmp(name, L"GenshinImpact.exe") ||
++               !wcsicmp(name, L"YuanShen.exe") ||
++               !wcsicmp(name, L"StarRail.exe") ||
++               !wcsicmp(name, L"ZenlessZoneZero.exe"));
++        cache = ret;
++    }
++    return ret;
++}
+ 
+ /***********************************************************************
+  *         GetModuleFileNameExA   (kernelbase.@)
+@@ -1452,6 +1472,7 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetModuleFileNameExA( HANDLE process, HMODULE mod
+ {
+     WCHAR *ptr;
+     DWORD len;
++    static int start = 0;
+ 
+     TRACE( "(process=%p, module=%p, %p, %ld)\n", process, module, name, size );
+ 
+@@ -1460,6 +1481,21 @@ DWORD WINAPI DECLSPEC_HOTPATCH GetModuleFileNameExA( HANDLE process, HMODULE mod
+         SetLastError( ERROR_INVALID_PARAMETER );
+         return 0;
+     }
++
++    // HACK: GI needs to be ran through Steam's stub since 5.8
++    if (!start && is_gi() && process != GetCurrentProcess() && module == NULL)
++    {
++        const char* steam_path = "c:\\windows\\system32\\steam.exe";
++
++        // HACK: Returning Steam as current process..
++        len = strlen(steam_path);
++        lstrcpynA(name, steam_path, size);
++        start++;
++
++        FIXME("GI detected, Steam stub enabled..\n");
++        return len;
++    }
++
+     if (process == GetCurrentProcess())
+     {
+         len = GetModuleFileNameA( module, name, size );
+-- 
+2.50.1
+

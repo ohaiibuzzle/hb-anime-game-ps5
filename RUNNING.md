@@ -30,7 +30,7 @@ A run takes about an hour, almost all of it compiling Wine.
 | Job | What it does |
 |---|---|
 | **sophon-dl and launcher files** | Builds `sophon-dl.exe` and zips it with the profiles, recipes and `push-game-profile.sh` |
-| **prospero-win app with Spritz patches** | Downloads upstream's release and checks it against their `SHA256SUMS`. Builds Wine from the prospero-win commit that release names in `SOURCES.txt`, with `wine-patches/` added, and puts the patched `ws2_32.dll` and `crypt32.dll` into the app. Then builds the three games' prefixes with upstream's `pw_install.py` |
+| **prospero-win app with Spritz patches** | Downloads upstream's release and checks it against their `SHA256SUMS`. Builds Wine from the prospero-win commit that release names in `SOURCES.txt`, with `wine-patches/` added, and puts the patched `ws2_32.dll`, `crypt32.dll` and `kernelbase.dll` into the app. Then builds the three games' prefixes with upstream's `pw_install.py` |
 | **release** | Only for a `v*` tag: publishes the files below as a GitHub release |
 
 ## 3. Get the results
@@ -116,8 +116,10 @@ games you haven't set up yet.
 
 | Where | Likely cause |
 |---|---|
-| "Add the Spritz patches to the series" | Upstream added a patch with the same number as one of ours (0920–0922). Renumber ours in `wine-patches/` |
-| "Build Wine with the series", `patch does not apply` | Upstream changed `dlls/ws2_32/socket.c` or `dlls/crypt32/msg.c` around our patches. The patch needs porting again |
+| "Add the Spritz patches to the series" | Upstream added a patch with the same number as one of ours (0920–0924). Renumber ours in `wine-patches/` |
+| "Build Wine with the series", `patch does not apply` | Upstream changed `dlls/ws2_32/socket.c`, `dlls/crypt32/msg.c` or `dlls/kernelbase/debug.c` around our patches. The patch needs porting again |
+| "Build Wine with the series", compile error in `programs/steam` | Proton's stub (`0924`) no longer builds against upstream Wine; port it or drop it and `0923` still works on its own |
 | "Build Wine with the series", configure or compile | Download the **wine-build-logs** artifact. A missing library shows in `configure.log`; add its `-dev` package to the workflow's `apt-get install` |
 | "Swap the patched modules into the app" | The release layout changed, or the patched DLL lacks the `PW_` switches, meaning a patch did not take |
+| "Build the game prefixes", `test -s` | A prefix has no `system32/steam.exe`: `0924` did not build it |
 | "Build the game prefixes" | A recipe step failed; `pw_install.py` names the step. A download (DXVK, Liberation fonts) may also have been unavailable |

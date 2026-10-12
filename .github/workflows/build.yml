@@ -105,7 +105,7 @@ jobs:
 
       # Upstream's own PC build: the whole series (ours included) on the pinned Wine.
       - name: Build Wine with the series
-        run: sh prospero-win/tools/build_host_wine.sh --source "$PWD/wine" --work "$PWD/host" --jobs 4
+        run: sh prospero-win/tools/build_host_wine.sh --source "$PWD/wine" --work "$PWD/host"
 
       - name: Upload build logs
         if: failure()
@@ -152,6 +152,16 @@ jobs:
           done
           # wineboot copies 0924's steam.exe from the lib dir; 0923 names it as the parent.
           for prefix in library/prefixes/*; do test -s "$prefix/drive_c/windows/system32/steam.exe"; done
+          # wineboot keeps HKLM\Hardware\Description\System\BIOS volatile, and it never runs on the
+          # console, so games there find no BIOS strings and say they are in a virtual machine.
+          # Append a saved one once Wine has exited; it must not be this runner's (Hyper-V's).
+          for prefix in library/prefixes/*; do
+            WINEPREFIX=$PWD/$prefix "$PWD/host/install/usr/bin/wineserver" -w
+            if grep -qi '^\[Hardware\\\\Description\\\\System\\\\BIOS\]' "$prefix/system.reg"; then
+              echo "$prefix already saved a BIOS key"; exit 1
+            fi
+            cat spritz/registry/bios.reg >> "$prefix/system.reg"
+          done
           # Ours replace the generated profiles: the downloader needs gdi, and
           # the game entries ride along for push-game-profile.sh.
           cp spritz/profiles/*.profile library/profiles/

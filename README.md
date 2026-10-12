@@ -47,13 +47,24 @@ Each one is checked with `git apply` against prospero-win's pinned Wine
 |---|---|---|
 | 0009 curl timeout fix (Genshin, ZZZ) | `0920` | Ported. The switch is renamed `PW_ENABLE_TIMEOUT_FIX`, because profiles may only set `PW_`/`DXVK_`/… variables. The Genshin and ZZZ game entries set it |
 | 0010 crypt32 attribute order | `0921` | Ported as is |
-| 0002 block the first connection (Star Rail) | `0922` | Ported. On by itself for `StarRail.exe`, and forced on for Genshin and ZZZ by `PW_ENABLE_DISCONNECT=1` in their game entries (Spritz does not do that for them); the switches are renamed `PW_ENABLE_DISCONNECT`/`PW_DISABLE_DISCONNECT`. Its second hunk is moved onto upstream Wine's `connect()`, which lacks Proton's lines it was anchored to |
+| 0002 block the first connection (Star Rail) | `0922` | Ported. On by itself for `StarRail.exe` only, as in Spritz; the switches are renamed `PW_ENABLE_DISCONNECT`/`PW_DISABLE_DISCONNECT`. Don't force it on Genshin or ZZZ: on the PS5 that makes them stop with "cannot run in a virtual machine". Its second hunk is moved onto upstream Wine's `connect()`, which lacks Proton's lines it was anchored to |
 | 0003 steam.exe stub from Proton | `0924` | Ported, with the two lines it needs in the committed `configure`. Each prefix gets `C:\windows\system32\steam.exe` from it, but nothing runs it: starting the game through it would take a second process |
 | 0004–0005 launch games through the stub (Genshin, ZZZ, Honkai Impact 3rd) | — | The PS5 cannot start a second process; `0923` stands in |
 | NelloKudo's kernelbase steam.exe parent hack (not in Spritz's series) | `0923` | Ported, and extended from Genshin (`GenshinImpact.exe`, `YuanShen.exe`) to `StarRail.exe` and `ZenlessZoneZero.exe`. The first time the game asks for another process's path, it answers `c:\windows\system32\steam.exe`, so no stub process is needed. `0924` puts the real stub at that path |
 | 0006, 0008 winex11 | — | The PS5 has its own display driver, not X11 |
 | 0007 copy arial.ttf | — | Upstream Wine has no `arial.ttf`. The recipes add Liberation Sans as `Arial` instead, which is what that file is |
 | 0001 winediag text | — | Cosmetic |
+
+Not a Wine patch, but needed as much: **`registry/bios.reg`**, the BIOS
+strings games read from `HKLM\Hardware\Description\System\BIOS`. On a PC,
+`wineboot` fills that key from the machine's SMBIOS at every start and never
+saves it. The console can't run `wineboot` (it would be a second process), so
+the key is missing there, and the games refuse to start, saying they are in
+a virtual machine. The CI appends a saved key with the values of an ordinary
+AMD desktop (AMI BIOS, ASUS board) to each prefix's `system.reg` after Wine
+has exited. Values from the PC that builds the prefix would be wrong: on
+GitHub's runners they say Hyper-V. WMI still reports `The Wine project`; the
+games didn't mind.
 
 ## Setup
 
@@ -68,9 +79,13 @@ names in `SOURCES.txt` with our patches added to the series, and swaps them
 in. It then runs upstream's `pw_install.py` on `recipes/`. To do it by hand
 instead, follow upstream's
 [installing games](https://github.com/mpereiraesaa/prospero-win/blob/main/docs/INSTALLING_GAMES.md)
-guide with `wine-patches/*.patch` added to its `wine/patches/`, and replace
+guide with `wine-patches/*.patch` added to its `wine/patches/`, replace
 each generated `<slug>.profile` with this repo's before pushing (the
-downloader needs `graphics = gdi`).
+downloader needs `graphics = gdi`), and append `registry/bios.reg` to each
+prefix's `system.reg` once Wine has exited (`wineserver -w`).
+
+Don't run a prefix with desktop Wine after that: `wineboot` would write
+your PC's own BIOS strings into the saved key.
 
 The recipes put Liberation Sans in the prefix and map `Arial` to it, as
 Spritz-Wine's `arial.ttf` does (Proton builds that from Liberation Sans).

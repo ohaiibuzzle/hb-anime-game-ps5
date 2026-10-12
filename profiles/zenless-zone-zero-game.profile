@@ -13,9 +13,8 @@
 ; WINE_ENABLE_TIMEOUT_FIX so a profile may set it). It is a no-op on a
 ; prospero-win build without that patch.
 ;
-; PW_ENABLE_DISCONNECT forces Spritz-Wine's "block the first connection"
-; hack (wine-patches/0922), which Spritz only applies to Star Rail, onto this
-; game too. If the game cannot log in, delete that line first.
+; Do not add PW_ENABLE_DISCONNECT=1 (wine-patches/0922) here: on the PS5 it
+; makes the game stop with "cannot run in a virtual machine".
 [application]
 id = zenless-zone-zero-game
 name = Zenless Zone Zero
@@ -35,4 +34,3 @@ mode = xinput
 
 [debug]
 env = PW_ENABLE_TIMEOUT_FIX=1
-env = PW_ENABLE_DISCONNECT=1

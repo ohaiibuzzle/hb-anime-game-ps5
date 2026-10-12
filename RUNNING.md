@@ -122,4 +122,5 @@ games you haven't set up yet.
 | "Build Wine with the series", configure or compile | Download the **wine-build-logs** artifact. A missing library shows in `configure.log`; add its `-dev` package to the workflow's `apt-get install` |
 | "Swap the patched modules into the app" | The release layout changed, or the patched DLL lacks the `PW_` switches, meaning a patch did not take |
 | "Build the game prefixes", `test -s` | A prefix has no `system32/steam.exe`: `0924` did not build it |
+| "Build the game prefixes", `already saved a BIOS key` | Something made the key non-volatile before our append; look at what the recipe or upstream's installer changed |
 | "Build the game prefixes" | A recipe step failed; `pw_install.py` names the step. A download (DXVK, Liberation fonts) may also have been unavailable |
